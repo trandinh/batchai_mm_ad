@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.svm import OneClassSVM
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-from azure.storage.blob import BlockBlobService
+from azure.storage.blob import BlobServiceClient
 import pickle
 import sys
 import json
@@ -51,11 +51,15 @@ tss = [x[1] for x in recs]
 vals = np.array([x[0] for x in recs])
 
 # load model
-blob_service = BlockBlobService(
-    account_name=blob_account, account_key=blob_key)
-blob = blob_service.get_blob_to_bytes(models_blob_container, model_name)
-pipe = pickle.loads(blob.content)
+account_url = "https://%s.blob.core.windows.net/"%(blob_account)
+blob_service = BlobServiceClient(account_url=account_url, credential=blob_key)
 
+blob = blob_service.get_blob_client(models_blob_container, model_name)
+downloader = model_blob.download_blob(0)
+with BytesIO() as f:
+	 downloader.readinto(f)
+     pipe = pickle.loads(f)
+	    
 # predict
 preds = pipe.predict(vals.reshape(-1, 1))
 preds = np.where(preds == 1, 0, 1) # 1 indicates an anomaly, 0 otherwise
@@ -72,9 +76,9 @@ res_file_name = 'preds_{0}_{1}_{2}_{3}'.format(device,
                                                tag,
                                                ts_from.replace('-', ''),
                                                ts_to.replace('-', ''))
-
+    
 # save predictions
-blob_service = BlockBlobService(
-    account_name=blob_account, account_key=blob_key)
-blob_service.create_blob_from_text(
-    predictions_blob_container, res_file_name, res.to_csv(index=None))
+blob = blob_service.get_blob_client(predictions_blob_container, res_file_name)
+output = df.to_csv (index=None, encoding = "utf-8")
+
+blob.upload_blob(output, overwrite=True, blob_type="BlockBlob")
